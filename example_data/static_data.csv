@@ -1,4 +1,4 @@
-PID,age,sex,weight,height,asa,surgery_type,comdiam,comlong,comcard
+CID,age,sex,weight,height,asa,surgery_type,comdiam,comlong,comcard
 PAT001,64,1,60,186,3,0,0,0,1
 PAT002,78,0,82,188,3,1,0,0,0
 PAT003,48,1,113,164,4,0,0,0,1

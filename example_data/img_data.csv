@@ -1,4 +1,4 @@
-PID,day,fname
+CID,day,fname
 PAT001,1,thorax_example_img.png
 PAT001,2,thorax_example_img.png
 PAT001,3,thorax_example_img.png

@@ -1,4 +1,4 @@
-PID,day,hour,hr,temp,bp,af
+CID,day,hour,hr,temp,bp,af
 PAT001,1,0,79.0,70.0,137.0,41.0
 PAT001,1,8,207.0,65.0,77.0,20.0
 PAT001,1,16,47.0,38.0,186.0,42.0
