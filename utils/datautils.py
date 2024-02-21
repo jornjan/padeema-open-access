@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 
+from utils import imputers
+
 import sklearn.metrics as skmetrics
 from typing import List, Tuple, Dict
 
@@ -86,6 +88,8 @@ def compl_wide_to_long(input: pd.DataFrame, target: str, max_los=15) -> pd.DataF
 
     return df_out
 
+
+
 def build_run_compl_df(wide_compl_df: pd.DataFrame,
                        target: str='infection',
                        min_los: int=1,
@@ -105,86 +109,88 @@ def build_run_compl_df(wide_compl_df: pd.DataFrame,
     return target_df
 
 
-
-
-def compute_metrics(y_true_list: List, y_pred_list: List, labels=['train', 'test']) -> pd.DataFrame:
-    results = []
-    for y_true, y_pred, split in zip(y_true_list, y_pred_list, labels):
-        fpr, tpr, thresholds = skmetrics.roc_curve(y_true, y_pred)
-        best_thresh = thresholds[np.argmax(tpr-fpr)]
-        
-        y_pred_bin = [1 if x > best_thresh else 0 for x in y_pred]
-        
-        results.append({
-            'split': split,
-            'auc': skmetrics.roc_auc_score(y_true, y_pred),
-            'pr': skmetrics.average_precision_score(y_true, y_pred),
-            'accuracy': skmetrics.accuracy_score(y_true, y_pred_bin),
-            'precision': skmetrics.precision_score(y_true, y_pred_bin, pos_label=1, zero_division=0),
-            'recall': skmetrics.recall_score(y_true, y_pred_bin, pos_label=1, zero_division=0),
-            'specificity': skmetrics.recall_score(y_true, y_pred_bin, pos_label=0, zero_division=0),
-            'f1-score': skmetrics.f1_score(y_true, y_pred_bin, zero_division=0)
-        })
-        
-    return pd.DataFrame.from_records(results)
-
-
-
-class DailyMedianImputer():
-    """
-    Uses the median value for per day to fill missing values.
-    """    
+def build_datadict(data: Dict[str, pd.DataFrame],
+                   target: str,
+                   min_los: int,
+                   shift: int) -> Dict[str, pd.DataFrame]:
+    data = {key: df.copy() for key, df in data.items()}
+    datadict = dict()
     
-    def __init__(self, fill_vals: pd.DataFrame=None) -> None:
-        """Initialize the imputer, optionally with preset imputation values.
-
-        Parameters
-        ----------
-        fill_vals : pd.DataFrame, optional
-            Set the values to use for imputation.
-        """        
-        self.fill_vals: pd.DataFrame = fill_vals
+    target_df = build_run_compl_df(data['compl'], target=target, min_los=min_los, shift=shift)
+    datadict['target'] = target_df
     
-    def fit(self, input: pd.DataFrame) -> None:
-        """Fits the imputation values to the input. This overwrites the previous values.
-
-        Parameters
-        ----------
-        input : pd.DataFrame
-            Dataframe to fit. Must have a column/index named `day`.
-        """        
-        self.fill_vals = input.groupby('day').median()
-        self.fill_vals = self.fill_vals.fillna(method='ffill', axis=1) # Ensure there are no NaN values left
+    # lab
+    lab_df = data.get('lab', None)
+    if lab_df is not None:
+        lab_df = target_df.join(lab_df, how='left')
+        lab_df = lab_df.groupby(level=0).fillna(method='ffill')
+        datadict['lab'] = lab_df
+    
+    # vitals 
+    vitals_df = data.get('vitals', None)
+    if vitals_df is not None:
+        vitals_df = target_df.join(vitals_df, how='left')
+        vitals_df = vitals_df.groupby(level=0).fillna(method='ffill')
+        datadict['vitals'] = vitals_df
         
-    def transform(self, input: pd.DataFrame) -> pd.DataFrame:
-        """Impute the missing values according to the fitted imputation values.
+    # image
+    image_df = data.get('img', None)
+    if image_df is not None:
+        image_df = target_df.join(image_df, how='left')
+        image_df = image_df.groupby(level=0).fillna(method='ffill')
+           
+        datadict['img'] = image_df
+        
+    # static
+    static_df = data.get('static', None)
+    if static_df is not None:
+        datadict['static'] = target_df.groupby(level=0).last().join(static_df, how='left')
+        
+    return datadict
 
-        Parameters
-        ----------
-        input : pd.DataFrame
-            Dataframe to transform
-
-        Returns
-        -------
-        pd.DataFrame
-            Dataframe with values imputed
-        """
-        assert self.fill_vals is not None, "Imputer must be fitted before transformation"        
-        output = input.fillna(self.fill_vals)
-        return output.fillna(method='ffill', axis=0)
+def impute_data(train_data: Dict[str, pd.DataFrame],
+                test_data: Dict[str, pd.DataFrame],
+                target: str) -> Tuple[Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]]:
+    keys = list(train_data.keys())
     
-    def fit_transform(self, input: pd.DataFrame) -> pd.DataFrame:
-        """ First fit the model to the input and then transform it.
+    if 'lab' in keys:
+        imputer = imputers.DailyMedianImputer()
+        lab_train, lab_test = train_data['lab'], test_data['lab']
+        
+        labcols = lab_train.columns.drop(target).tolist()
+        lab_train[labcols] = imputer.fit_transform(lab_train[labcols])
+        lab_test[labcols] = imputer.transform(lab_test[labcols])
+        
+        train_data['lab'] = lab_train
+        test_data['lab'] = lab_test
+        
+        
+    if 'vitals' in keys:
+        imputer = imputers.DailyMedianImputer()
+        vitals_train, vitals_test = train_data['vitals'], test_data['vitals']
+        
+        vitcols = vitals_train.columns.drop(target).tolist()
+        vitals_train[vitcols] = imputer.fit_transform(vitals_train[vitcols])
+        vitals_test[vitcols] = imputer.transform(vitals_test[vitcols])
+        
+        train_data['vitals'] = vitals_train
+        test_data['vitals'] = vitals_test
+        
 
-        Parameters
-        ----------
-        input : pd.DataFrame
-            Dataframe to fit and transform
-
-        Returns
-        -------
-        pd.DataFrame
-            Dataframe with values imputed
-        """        
-        self.fit(input)
-        return self.transform(input)
+    if 'static' in keys:
+        imputer = imputers.MedianImputer()
+        static_train, static_test = train_data['static'], test_data['static']
+        
+        try:
+            statcols = static_train.columns.drop(target).tolist()
+            static_train[statcols] = imputer.fit_transform(static_train[statcols])
+            static_test[statcols] = imputer.transform(static_test[statcols])
+        except:
+            print(static_train.dtypes)
+            print(imputer.fill_vals)
+            raise(ValueError('failed imputation'))
+        
+        train_data['static'] = static_train
+        test_data['static'] = static_test
+        
+    return train_data, test_data
