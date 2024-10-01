@@ -1,4 +1,5 @@
 # Complication Prediction after Esophagectomy with Machine Learning
+[![DOI](https://zenodo.org/badge/754007246.svg)](https://doi.org/10.5281/zenodo.13865720)
 
 This repository contains the code that was used in this [paper](https://www.mdpi.com/2075-4418/14/4/439).
 
